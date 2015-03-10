@@ -2,30 +2,16 @@
 
 ## Description ##
 
-The plugin allows you get readable DMARC reports through the free Postmark API.
+The plugin allows you get readable DMARC reports through the free Postmark API. 
 The plugin adds a menu item under "Statistics" where you can generate some reports.
-
-## Installation ##
-
-Just
-
-### Dependencies ###
-
-Requires php version 5.3 or later. 
-
-Requires the Common Plugin to be installed. See <https://github.com/jpbayard/phplist-plugin-postmark>
+Those reports are (kind of ) similar to the weekly reports of postmark. 
 
 ### Set the plugin directory ###
 The default plugin directory is `plugins` within the admin directory.
+The plugin dir has to be in the admin folder but can be named another way.
 
-You can use a directory outside of the web root by changing the definition of `PLUGIN_ROOTDIR` in config.php.
-The benefit of this is that plugins will not be affected when you upgrade phplist.
-
-### Install through phplist ###
-Install on the Plugins page (menu Config > Plugins) using the package URL 
-
-* the file PostMarkPlugin.php
-* the directory PostMarkPlugin
+The PostMarkPlugin dir must be accessible from outside due to ajax call to the page postmark.php.
+Or you can change the path of this call in main.php and copy this page to a public folder.
 
 ### Install manually ###
 Download the plugin zip file from <https://github.com/jpbayard/phplist-plugin-postmark/archive/master.zip>
@@ -37,15 +23,15 @@ This should contain
 * the directory PostMarkPlugin
 
 ###Settings###
-In the settings, setup you private key for Postmark API
+In the settings, setup you private key for Postmark API.
+Default timeout for the request is 30 seconds.
 
 ##Usage##
-
-For guidance on usage just go to the postmark statistics page
+For guidance on usage, go to the postmark statistics page
 
 ##Support##
 
-Questions and problems can be reported in the phplist user forum topic .
+Questions and problems can be reported in the phplist user forum topic.
 
 ## Donation ##
 This plugin is free but if you install and find it useful then a donation to support further development is greatly appreciated.
@@ -53,4 +39,4 @@ This plugin is free but if you install and find it useful then a donation to sup
 ## Version history ##
 
     version     Description
-    2015-03-09  Release to GitHub
+    2015-03-10  Release to GitHub

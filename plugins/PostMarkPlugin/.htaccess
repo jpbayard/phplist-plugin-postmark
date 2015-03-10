@@ -1,0 +1,8 @@
+<FilesMatch "\.(php|png|gif)$">
+Order allow,deny
+Deny from all
+</FilesMatch>
+<FilesMatch "(postmark.php|logo-postmark.png|gif-loading.gif|i-check.png|i-cross.png)$">
+Order allow,deny
+allow from all
+</FilesMatch>
