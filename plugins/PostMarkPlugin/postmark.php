@@ -19,6 +19,57 @@
  * @license   http://www.gnu.org/licenses/gpl.html GNU General Public License, Version 3
 */
 
+	function gethostbyname6($host, $try_a = false) {
+        // get AAAA record for $host
+        // if $try_a is true, if AAAA fails, it tries for A
+        // the first match found is returned
+        // otherwise returns false
+
+        $dns = gethostbynamel6($host, $try_a);
+        if ($dns == false) { return false; }
+        else { return $dns[0]; }
+    }
+
+    function gethostbynamel6($host, $try_a = false) {
+        // get AAAA records for $host,
+        // if $try_a is true, if AAAA fails, it tries for A
+        // results are returned in an array of ips found matching type
+        // otherwise returns false
+
+        $dns6 = dns_get_record($host, DNS_AAAA);
+        if ($try_a == true) {
+            $dns4 = dns_get_record($host, DNS_A);
+            $dns = array_merge($dns4, $dns6);
+        }
+        else { $dns = $dns6; }
+        $ip6 = array();
+        $ip4 = array();
+        foreach ($dns as $record) {
+            if ($record["type"] == "A") {
+                $ip4[] = $record["ip"];
+            }
+            if ($record["type"] == "AAAA") {
+                $ip6[] = $record["ipv6"];
+            }
+        }
+        if (count($ip6) < 1) {
+            if ($try_a == true) {
+                if (count($ip4) < 1) {
+                    return false;
+                }
+                else {
+                    return $ip4;
+                }
+            }
+            else {
+                return false;
+            }
+        }
+        else {
+            return $ip6;
+        }
+    }
+
 	function addRecord($array, $newrecord )
 	{
 		
@@ -38,7 +89,7 @@
 			for ( $o = 0; $o < count($array) ; $o++)
 			{
 				$subarray = $array[$o];
-				If  ( ($subarray['domain'] == $newrecord['domain']) && ($subarray['ip'] == $newrecord['ip'])  )
+				If  ( ($subarray['domain'] == $newrecord['domain']) && ($subarray['ip'] == $newrecord['ip']) && ( $subarray['source_ip_version'] == $newrecord['source_ip_version']) )
 				{
 					$array[$o]['spf_pass'] += $newrecord['spf_pass'];
 					$array[$o]['spf_failed'] += $newrecord['spf_failed'];
@@ -83,6 +134,7 @@
 	
 	$source_domain = $_SERVER['SERVER_NAME'];
 	$source_ip = $ip = gethostbyname($source_domain);
+	$source_ip_ipv6  = gethostbyname6($source_domain);
 	
 	if (isSet($_GET['from_date']))
 		$from_date = $_GET['from_date'];
@@ -125,7 +177,9 @@
 	$processed = 0;
 	$notconfigured = 0;
 	$aligned = 0;
+	$alignedipv6 = 0; 
 	$failed = 0;
+	$threats = 0;
 	$aError = array();
 	$aNotConfig = array();
 	$allRecord = array();
@@ -133,6 +187,7 @@
 	$aMain = array();
 	$aMain['domain'] = $source_domain;
 	$aMain['ip'] = $source_ip;
+	$aMain['ipv6'] = $source_ip_ipv6;
 	$aMain['spf_pass'] = 0;
 	$aMain['spf_failed'] = 0;
 	$aMain['dkim_pass'] = 0;
@@ -153,19 +208,24 @@
 			{
 				if ( ( $record->spf_domain == $source_domain) && ( $record->spf_result == 'pass' ) )
 				{
-					if ($record->source_ip == $source_ip )
+					if ($record->source_ip == $source_ip || $record->source_ip == $source_ip_ipv6 )
 					{
-						$aligned += $record->count;
+						if ($record->source_ip == $source_ip)
+							$aligned += $record->count;
+						else
+							$alignedipv6 += $record->count;
+						
 						$aMain['spf_pass'] += $record->count;
 						$aMain['dkim_pass'] += $record->count;
 						
 					}
 					else
 					{
-						$failed += $record->count;
+						$threats += $record->count;
 						$newrecord = array();
 						$newrecord['domain'] = $source_domain;
 						$newrecord['ip'] = $record->source_ip;
+						$newrecord['source_ip_version'] = $record->source_ip_version;
 						$newrecord['spfdomain'] = $record->spf_domain;
 						$newrecord['spf_pass'] = $record->count;
 						$newrecord['spf_failed'] = 0;
@@ -177,12 +237,13 @@
 				}
 				else
 				{
-					if ($record->source_ip == $source_ip )
+					if ($record->source_ip == $source_ip  || $record->source_ip == $source_ip_ipv6)
 					{
 						$notconfigured += $record->count;
 						$newrecord = array();
 						$newrecord['domain'] = $record->header_from;
 						$newrecord['ip'] = $record->source_ip;
+						$newrecord['source_ip_version'] = $record->source_ip_version;
 						$newrecord['spfdomain'] = $record->spf_domain;
 						$newrecord['spf_pass'] = 0;
 						$newrecord['spf_failed'] = $record->count;
@@ -193,10 +254,11 @@
 					}
 					else
 					{
-						$failed += $record->count;
+						$threats += $record->count;
 						$newrecord = array();
 						$newrecord['domain'] = $record->spf_domain;
 						$newrecord['ip'] = $record->source_ip;
+						$newrecord['source_ip_version'] = $record->source_ip_version;
 						$newrecord['spfdomain'] = $record->spf_domain;
 						$newrecord['spf_pass'] = 0;
 						$newrecord['spf_failed'] = $record->count;
@@ -212,13 +274,14 @@
 			{
 				if ( ( $record->spf_domain == $source_domain) && ( $record->spf_result == 'pass' ) )
 				{
-					if ($record->source_ip == $source_ip )
+					if ($record->source_ip == $source_ip  || $record->source_ip == $source_ip_ipv6)
 					{
 						$notconfigured += $record->count;
 						
 						$newrecord = array();
 						$newrecord['domain'] = $record->header_from;
 						$newrecord['ip'] = $record->source_ip;
+						$newrecord['source_ip_version'] = $record->source_ip_version;
 						$newrecord['spfdomain'] = $record->spf_domain;
 						$newrecord['spf_pass'] = $record->count;
 						$newrecord['spf_failed'] = 0;
@@ -229,11 +292,12 @@
 					}
 					else
 					{
-						$failed += $record->count;
+						$threats += $record->count;
 					
 						$newrecord = array();
 						$newrecord['domain'] = $record->spf_domain;
 						$newrecord['ip'] = $record->source_ip;
+						$newrecord['source_ip_version'] = $record->source_ip_version;
 						$newrecord['spfdomain'] = $record->spf_domain;
 						$newrecord['spf_pass'] = $record->count;
 						$newrecord['spf_failed'] = 0;
@@ -245,13 +309,14 @@
 				}
 				else
 				{
-					if ($record->source_ip == $source_ip )
+					if ($record->source_ip == $source_ip  || $record->source_ip == $source_ip_ipv6)
 					{
 						$notconfigured += $record->count;
 						
 						$newrecord = array();
 						$newrecord['domain'] = $record->header_from;
 						$newrecord['ip'] = $record->source_ip;
+						$newrecord['source_ip_version'] = $record->source_ip_version;
 						$newrecord['spfdomain'] = $record->spf_domain;
 						$newrecord['spf_pass'] = 0;
 						$newrecord['spf_failed'] = $record->count;
@@ -268,6 +333,7 @@
 						$newrecord = array();
 						$newrecord['domain'] = $record->spf_domain;
 						$newrecord['ip'] = $record->source_ip;
+						$newrecord['source_ip_version'] = $record->source_ip_version;
 						$newrecord['spfdomain'] = $record->spf_domain;
 						$newrecord['spf_pass'] = 0;
 						$newrecord['spf_failed'] = $record->count;
@@ -337,14 +403,14 @@
                                 <p style="margin: 3px 0 0; padding: 0; color: #888; font: normal 13px/16px 'Helvetica Neue', Helvetica, Arial, sans-serif;">Processed</p>
                               </td>
                               <td style="text-align: center; border-left: 1px solid #e4e4e4;border-right: 1px solid #e4e4e4;padding: 10px 0 15px;border-collapse: collapse;" width="224px">
-                                <h3 style="font: bold 35px 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0 auto; color: #8ED49C; position: relative; display: inline;"><?php echo $aligned; ?></h3>
+                                <h3 style="font: bold 35px 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0 auto; color: #8ED49C; position: relative; display: inline;"><?php echo ($aligned+$alignedipv6); ?></h3>
                                 <p style="margin: 3px 0 0; padding: 0; color: #888; font: normal 13px/16px 'Helvetica Neue', Helvetica, Arial, sans-serif;">
-                                  <span style="font: bold 12px 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #8ED49C; margin-right: 5px;"><?php echo round( 100*($aligned/$processed), 2); ?>%</span>Fully Aligned</p>
+                                  <span style="font: bold 12px 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #8ED49C; margin-right: 5px;"><?php echo round( 100*(($aligned+$alignedipv6)/$processed), 2); ?>%</span>Fully Aligned</p>
                               </td>
                               <td style="text-align: center; padding: 10px 0 15px;border-collapse: collapse;" width="224px" class="col-r">
-                                <h3 style="font: bold 35px 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0 auto; color: #E6735C; position: relative; display: inline;"><?php echo ($failed+$notconfigured); ?></h3>
+                                <h3 style="font: bold 35px 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0 auto; color: #E6735C; position: relative; display: inline;"><?php echo ($failed); ?></h3>
                                 <p style="margin: 3px 0 0; padding: 0; color: #888; font: normal 13px/16px 'Helvetica Neue', Helvetica, Arial, sans-serif;">
-                                  <span style="font: bold 12px 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #E6735C; margin-right: 5px;"><?php echo round( 100*(($failed+$notconfigured)/$processed), 2); ?>%</span>Failed</p>
+                                  <span style="font: bold 12px 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #E6735C; margin-right: 5px;"><?php echo round( 100*(($failed)/$processed), 2); ?>%</span>Failed</p>
                               </td>
                             </tr>
                           </table>
@@ -355,7 +421,7 @@
 					
 					<div style="margin: 40px 0;" class="pm-content-section pm-content-section--trusted">
                       <h2 style="margin: 0 8px 0.5em; padding: 0; color: #222; font: bold 20px 'Helvetica Neue', Helvetica, Arial, sans-serif;">Trusted Sources
-                        <span style="font: normal 18px 'Helvetica Neue', Helvetica, Arial, sans-serif; padding-left: 5px; color: #8ED49C;"><?php echo $aligned+$notconfigured; ?></span>
+                        <span style="font: normal 18px 'Helvetica Neue', Helvetica, Arial, sans-serif; padding-left: 5px; color: #8ED49C;"><?php echo $aligned+$alignedipv6+$notconfigured; ?></span>
                       </h2>
 
                       <p style="margin: 0 8px 15px; padding: 0; color: #888; font: normal 13px/21px 'Helvetica Neue', Helvetica, Arial, sans-serif; text-align: justify;" class="pm-section-body">Trusted sources are servers that have passed DKIM, SPF or both when validated against your DNS records. To be fully DMARC compliant, both SPF and DKIM must be fully aligned according to your DMARC policy.</p>
@@ -386,6 +452,9 @@
                             </th>
                           </tr>
 						  
+						  <?php  if ($aligned > 0) 
+								 {
+						  ?> 
 						  <tr>
                             <td style="padding: 0.5em 0 0.5em 8px;background-color: #EFFCF2;border-collapse: collapse;" width="50%">
                               <a style="font: normal 12px 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0; color: #8ED49C; word-break: break-all; text-decoration: none;" class="ip-address" target="_blank" href="http://whois.domaintools.com/<?php echo $aMain['ip']; ?>"><?php echo $aMain['ip']; ?></a>
@@ -400,15 +469,37 @@
                               <p style="font: normal 12px 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0; color: #888;"><img src="<?php echo $pluginPath; ?>i-check.png" alt="" height="10" width="14" border="0"></p>
                             </td>
                           </tr>
+						  <?php  
+								 }
+								 
+								 if ($alignedipv6 > 0) 
+								 {
+						  ?> 
+						  <tr>
+                            <td style="padding: 0.5em 0 0.5em 8px;background-color: #EFFCF2;border-collapse: collapse;" width="50%">
+                              <a style="font: normal 12px 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0; color: #8ED49C; word-break: break-all; text-decoration: none;" class="ip-address" target="_blank" href="http://whois.domaintools.com/<?php echo $aMain['ipv6']; ?>"><?php echo $aMain['ipv6']; ?></a>
+                            </td>
+                            <td style="text-align: center;padding: 0.5em 0;background-color: #EFFCF2;border-collapse: collapse;" width="10%">
+                              <p style="font: bold 12px 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0; color: #8ED49C;"><?php echo $alignedipv6; ?></p>
+                            </td>
+                            <td style="text-align: center;padding: 0.5em 0;background-color: #EFFCF2;border-collapse: collapse;" colspan="2" width="20%">
+                              <p style="font: normal 12px 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0; color: #888;"><img src="<?php echo $pluginPath; ?>i-check.png" alt="" height="10" width="14" border="0"></p>
+                            </td>
+                            <td style="text-align: center;padding: 0.5em 0;background-color: #EFFCF2;border-collapse: collapse;" colspan="2" width="20%">
+                              <p style="font: normal 12px 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0; color: #888;"><img src="<?php echo $pluginPath; ?>i-check.png" alt="" height="10" width="14" border="0"></p>
+                            </td>
+                          </tr>
 						  
-						  <?php 
+						   <?php  
+								 }
+						  
 							for ($j = 0; $j < count($aNotConfig) ; $j++)
 							{
 								$record = $aNotConfig[$j];
 						  ?>
 							  <tr>
 								<td style="padding: 0.5em 0 0.5em 8px;background-color: #EFFCF2;border-collapse: collapse;" width="50%">
-								  <a style="font: normal 12px 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0; color: #8ED49C; word-break: break-all; text-decoration: none;" class="ip-address" target="_blank" href="http://whois.domaintools.com/<?php echo $aMain['ip']; ?>"><?php echo $aMain['ip']; ?></a>
+								  <a style="font: normal 12px 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0; color: #8ED49C; word-break: break-all; text-decoration: none;" class="ip-address" target="_blank" href="http://whois.domaintools.com/<?php IF ($record['source_ip_version']==4) echo $aMain['ip']; else echo $aMain['ipv6']; ?>"><?php IF ($record['source_ip_version']==4) echo $aMain['ip']; else echo $aMain['ipv6']; ?></a>
 								</td>
 								<td style="text-align: center;padding: 0.5em 0;background-color: #EFFCF2;border-collapse: collapse;" width="10%">
 								  <p style="font: bold 12px 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 0; color: #8ED49C;"><?php echo $record['dkim_pass']+$record['dkim_failed']; ?></p>
@@ -432,7 +523,7 @@
                     <!-- Unknown/Threats -->
 					<div style="margin-bottom: 40px;" class="pm-content-section pm-content-section--unknown">
                       <h2 style="margin: 0 8px 0.5em; padding: 0; color: #222; font: bold 20px 'Helvetica Neue', Helvetica, Arial, sans-serif;">Unknown/Threats
-                        <span style="font: normal 18px 'Helvetica Neue', Helvetica, Arial, sans-serif; padding-left: 5px; color: #E6735C;"><?php echo $failed; ?></span>
+                        <span style="font: normal 18px 'Helvetica Neue', Helvetica, Arial, sans-serif; padding-left: 5px; color: #E6735C;"><?php echo $failed+$threats; ?></span>
                       </h2>
                       <p style="margin: 0 8px 15px; padding: 0; color: #888; font: normal 13px/21px 'Helvetica Neue', Helvetica, Arial, sans-serif; text-align: justify;" class="pm-section-body">No alignment means that neither DKIM or SPF pass the DMARC policy. These messages are either spam (spoofed) or require your attention for SPF / DKIM authentication. It's important to monitor these emails closely.
                       </p>
