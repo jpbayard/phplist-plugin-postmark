@@ -40,3 +40,4 @@ This plugin is free but if you install and find it useful then a donation to sup
 
     version     Description
     2015-03-10  Release to GitHub
+	2015-08-31  Beter management of ipv6 ip ( separation in the report like in the mails ) & results now give the exacts same % as postmark mails.
